@@ -15,12 +15,12 @@ from pre_process import rescale_withoutangle
 from pre_process import Landmarks
 from pre_process import load_all_incisors_of_example
 from pre_process import load
-from Plotter import plot_procrustes
+from Figure_denoise import sobel
 from Figure_denoise import crop
 from Figure_denoise import median_filter
 from util import load_training_data
 
-def gpa(landmarks, Nr_incisor):
+def gpa(landmarks):
     """Performs Generalized Procrustes Analysis on the given landmark models.
 
     This does Procrustes Analysis, aligning each shape such that the sum of
@@ -61,12 +61,11 @@ def gpa(landmarks, Nr_incisor):
         new_mean_shape = new_mean_shape.scale_to_unit().translate_center_to_origin()
 
         # debug
-        plot_procrustes(new_mean_shape, aligned_shapes, Nr_incisor, True)
+        #Plotter.plot_procrustes(new_mean_shape, aligned_shapes)
 
         # 7: if converged, do not return to 4
         #print((mean_shape.as_vector() - new_mean_shape.as_vector()))
         if ((mean_shape.as_vector() - new_mean_shape.as_vector()) < 0.1).all():
-
             break
   #  Plotter.plot_procrustes(new_mean_shape, aligned_shapes)
 
@@ -180,8 +179,8 @@ if __name__ == '__main__':
     Nr_incisor = 1
     s = 500
     t = [1370, 890]
-    Golden_lm = load(Nr_incisor)
-    Golden_lm = rescale_withoutangle(gpa(Golden_lm, Nr_incisor)[2], t, s )
+    Golden_lm = load_training_data(Nr_incisor) # the function in util refers to the file which only contains 02-14tif.
+    Golden_lm = rescale_withoutangle(gpa(Golden_lm)[2], t, s )
     lm_objects = load_training_data(Nr_incisor)
     landmarks_pca = PCA.ASM(lm_objects)
     #print(np.shape(landmarks_pca.mu_value))

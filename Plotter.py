@@ -139,12 +139,11 @@ def plot_procrustes(mean_shape, aligned_shapes, incisor_nr=0, save=False):
 
     # show
     img = __fit_on_screen(img)
-    # cv2.imshow('Procrustes result for incisor ' + str(incisor_nr), img)
+    cv2.imshow('Procrustes result for incisor ' + str(incisor_nr), img)
+    cv2.waitKey(0)
     if save:
-        cv2.imwrite('Data\Plot\%d.tif' %(incisor_nr) , img)
-        incisor_nr += 1
-        print "picture is saved", 'Data\Plot\%s.tif' % str(incisor_nr)
-    # cv2.destroyAllWindows()
+        cv2.imwrite('Plot/Procrustes/'+str(incisor_nr)+'.png', img)
+    cv2.destroyAllWindows()
 
 
 def plot_asm(asm, incisor_nr=0, save=False):
@@ -446,3 +445,31 @@ def drawlines(img, lm):
                  (int(lm[(i + 1), 0]), int(lm[(i + 1), 1])),
                  (255, 0, 0), 2)
     return img
+
+def plot_PCA(mu_value,save=True):
+    img = np.ones((1000, 600, 3), np.uint8) * 255
+    # s = (1500)
+    # t = [300, 500]
+    s = (1)
+    t = [0, 0]
+    mean_shape = mu_value * s + t
+    # mean_shape = mu_value.translate([300, 500])
+    # plot mean shape
+    # mean_shape = mu_value
+    points = mean_shape
+    for i in range(len(points)-1):
+        cv2.line(img, (int(points[i, 0]), int(points[i, 1])),
+                 (int(points[(i + 1) , 0]), int(points[(i + 1), 1])),
+                 (0,0,0), 2)
+    ## center of mean shape
+    # cv2.circle(img, (300, 500), 10, (255, 255, 255))
+
+       # show
+    # img = __fit_on_screen(img)
+    cv2.imshow("PCA eigenteeth",img)
+    cv2.waitKey(0)
+    if save:
+        cv2.imwrite('Data/Plot/PCA/PCA3.png', img)
+    # cv2.destroyAllWindows()
+    gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    return gray_image

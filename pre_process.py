@@ -4,7 +4,7 @@ import numpy as np
 import fnmatch
 import re
 import math
-DATA_DIR = os.path.join('.', 'Data\Landmarks\original')
+DATA_DIR = os.path.join('.', 'Data\Landmarks\c_landmarks')
 
 class Landmarks(object):
     """Class representing the landmarks for one example incisor.

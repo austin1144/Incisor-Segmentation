@@ -1,12 +1,11 @@
 
 import numpy as np
 from GPA import gpa
+from Plotter import plot_PCA
 
 
 
 class ASM(object):
-
-    print Nr_incisor, "in the ASM"
     """Class representing an active shape model.
 
     Attributes:
@@ -26,9 +25,9 @@ class ASM(object):
             landmarks (Landmarks): The landmark points from which the ASM is learned.
 
         """
-        Nr_incisor = 5 # indicate which teeth do you want
+
         # Do Generalized Procrustes analysis
-        mu, Xnew, mu_value = gpa(landmarks, Nr_incisor) #  mean_shape, aligned_shapes, mean_shape_value
+        mu, Xnew, mu_value = gpa(landmarks) #  mean_shape, aligned_shapes, mean_shape_value
 
         # covariance calculation
         XnewVec = as_vectors(Xnew)
@@ -45,7 +44,6 @@ class ASM(object):
         eigvals = eigvals[idx]
         eigvecs = eigvecs[:, idx]
 
-
         self.scores = np.dot(XnewVec, eigvecs)
         self.mean_scores = np.dot(mu.as_vector(), eigvecs)
         self.variance_explained = np.cumsum(eigvals/np.sum(eigvals))
@@ -58,6 +56,21 @@ class ASM(object):
         npcs, _ = index_of_true(self.variance_explained > 0.99)
         npcs += 1
         self.eigvecs = eigvecs[:, :npcs]
+        #==========plot eigen teeth
+        # plot_PCA(self.mu_value) # to plot the mean value
+        # self.eigvecs = eigvecs[:, 6]
+        # projections = np.dot(eigvals, self.eigvecs)
+        # eigentooth = np.dot(projections, self.eigvecs.T).T
+        # eigentooth.resize(40, 2)
+        # eigentooth += self.mu_value
+        # plot_PCA(eigentooth)
+        # print "eigentooth done"
+        #=====from internet
+        # const = np.dot(self.scores, eigvecs.T)[2,:].reshape(40,2)+self.mean_scores #13,80
+        # plot_PCA(const)
+
+
+
         M = []
         for i in range(0, npcs-1):
             M.append(np.sqrt(eigvals[i]) * eigvecs[:, i])

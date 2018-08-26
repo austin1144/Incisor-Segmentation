@@ -3,10 +3,10 @@ import os
 import hashlib
 import cv2
 import numpy as np
+from scipy import ndimage
 
 
-
-def load(path, indices):
+def load_image(path, indices):
     """Loads a series of radiograph images.
 
     Args:
@@ -23,7 +23,6 @@ def load(path, indices):
     files = [path + f for f in files]
     images = []
     for f in files:
-        print(f)
         images.append(cv2.imread(f))
     """
     # help debug
@@ -75,7 +74,7 @@ def sobel(img):
     i = clahe(img)
     i = median_filter(i)
     #i = img
-    cv2.imshow('clahe', i)
+    #cv2.imshow('clahe', i)
     #use sobel to get edges
     sobelx = cv2.Sobel(i, cv2.CV_64F, 1, 0, ksize=3)
     sobely = cv2.Sobel(i, cv2.CV_64F, 0, 1, ksize=3)
@@ -94,10 +93,38 @@ def crop(img,x,y,h, w):
 def canny(img):
    return cv2.Canny(img, 30, 45)
 
+def top_hat_transform(img):
+    """Calculates the top-hat transformation of a given image.
+    This transformation enhances the brighter structures in the image.
+
+    Args:
+        img: A grayscale dental x-ray image.
+
+    Returns:
+        The top-hat transformation of the input image.
+
+    """
+    return ndimage.morphology.white_tophat(img, size=400)
+
+def bottom_hat_transform(img):
+    """Calculates the bottom-hat transformation of a given image.
+    This transformation enhances the darker structures in the image.
+
+    Args:
+        img: A grayscale dental x-ray image.
+
+    Returns:
+        The top-hat transformation of the input image.
+
+    """
+    return ndimage.morphology.black_tophat(img, size=80)
+
 
 
 if __name__ == '__main__':
-    img = load(path='Data\Radiographs', indices=range(1, 15))[0]
+    img = load_image(path='Data\Radiographs', indices=range(1, 15))[0]
+    #print img
+    """
     img_bilater = bilateral_filter(img)
     img_clahe = clahe(img)
     cv2.imshow('bilateral_filter',  bilateral_filter(img))
@@ -105,4 +132,5 @@ if __name__ == '__main__':
     cv2.waitKey(0)
     cv2.imwrite('Data/Configure/bilateral_filter.tif', img_bilater)
     cv2.imwrite('Data/Configure/raw.tif', img)
+    """
 

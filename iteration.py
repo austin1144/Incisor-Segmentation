@@ -14,16 +14,30 @@ from Figure_denoise import crop
 from GPA import gpa, align_params
 from util import load_training_data
 from pre_process import find_the_normal_to_lm
-from Figure_denoise import median_filter, sobel, bilateral_filter, median_filter, canny
+from Figure_denoise import median_filter, sobel, bilateral_filter, median_filter, canny, top_hat_transform, bottom_hat_transform
 from pre_process import Landmarks
+from Figure_denoise import load_image
 
 import Figure_denoise
 import Plotter
 
-def active_shape_model(X, testimg, max_iter, Nr_incisor):
-    img = bilateral_filter(testimg)
-    img = median_filter(img)
+def active_shape_model(X, testimg, max_iter, Nr_incisor,search_length):
+    """
+
+    :param X:   Init Guess
+    :param testimg:   target image
+    :param max_iter:   total iteration limitation
+    :param Nr_incisor:   which nr. of incisor is used to do the asm
+    :return:     a model describe the target incisor on the image
+    """
+    img = median_filter(testimg)
+    img = bilateral_filter(img)
+
+    #img = top_hat_transform(img)
+    #img = bottom_hat_transform(img)
     img = sobel(img)
+    #img = canny(img)
+    #img = sobel(img)
     X = Landmarks(X).show_points()
     # Initial value
     nb_iter = 0
@@ -33,6 +47,8 @@ def active_shape_model(X, testimg, max_iter, Nr_incisor):
     # Begin to iterate.
     lm_objects = load_training_data(Nr_incisor)
     landmarks_pca = PCA.ASM(lm_objects)
+    #search_length = 5
+    glm_range = 3
     while (n_close < 16 and nb_iter <= max_iter):
 
 
@@ -50,10 +66,15 @@ def active_shape_model(X, testimg, max_iter, Nr_incisor):
         if nb_iter == max_iter:
             Y = best_Y
         """
-        Y =  get_max_along_normal(X, 2, img)
+        # Training glm
+        # cov, mean = grey_level_model(lm, glm_range)
+        # Y = find_the_best_score(X, img, search_length, glm_range, cov, mean)
+
+        Y =  get_max_along_normal(X, search_length, img)
         #print Y
         # 2. Update the parameters (Xt, Yt, s, theta, b) to best fit the
         # new found points X
+
         b, t, s, theta = parameter_update(X, Y, Nr_incisor)
         """ 
         Apply constraints to the parameters, b, to ensure plausible shapes
@@ -82,13 +103,14 @@ def active_shape_model(X, testimg, max_iter, Nr_incisor):
         #Plotter.plot_landmarks_on_image([X_prev, X], testimg, wait=False,
         #                                    title="Fitting incisor nr. %d" % (Nr_incisor,))
         X = X.show_points()
-        img2 = img.copy()
         """Calibration"""
+        img2 = img.copy()
         final_image = drawlines(img2, X)
         cv2.imshow('iteration results ', final_image)
         cv2.waitKey(10)
+        # cv2.imwrite('Data\Configure\iteration-%d.tif' % nb_iter, final_image)
         nb_iter += 1
-        #print('this is the %d iteration'% nb_iter)
+        # print('this is the %d iteration'% nb_iter)
 
     cv2.imwrite('Data\Configure\incisor-%d.tif' % Nr_incisor, final_image)
     return X
@@ -173,52 +195,203 @@ def get_max_along_normal(lm, length, img):
         count = 0
         intensity = np.zeros(length)
         for j in range(-length, length-1): # for comparing intensity[j] > intensity[j+1]:
-            if abs(int(lm[i,0]+ j + 1)) >= 999 or abs(int(lm[i,1] + normal[i]*(j+1))) >= 999:
-                intensity[j + 1] = intensity[j]
+            if abs(int(lm[i,0]+ j)) >= 999 or abs(int(lm[i,1] + normal[i]*j)) >= 999:
+                intensity[j] = intensity[j]
                 count += 1
             else:
-                intensity[j+1] = img[int(lm[i,0]+ j + 1),  int(lm[i,1] + normal[i]*(j+1))] # the multiple part will be too big.
-            if intensity[j+1] > intensity[j]:
-                max_points_along_normal[i, :] = [lm[i,0] + j + 1,  lm[i,1] + normal[i]*(j+1)]
+                if abs(int(lm[i, 0] + j+1)) >= 999 or abs(int(lm[i, 1] + normal[i] * (j+1))) >= 999:
+                    intensity[j] = intensity[j]
+                else:
+                    intensity[j] = img[int(lm[i,0]+ j + 1),  int(lm[i,1] + normal[i]*(j+1))] - \
+                                   img[int(lm[i,0]+ j),  int(lm[i,1] + normal[i]*j)] # the multiple part will be too big.
+        max_intensity_position = np.argmax(intensity)
+
+
+            #if abs(intensity[j+1] - intensity[j]) > abs(intensity[j] - intensity[j]):
+        max_points_along_normal[i, :] = [lm[i,0] + max_intensity_position,  lm[i,1] + normal[i]*max_intensity_position]
         #print(count) # find how many approximation
     return max_points_along_normal
 
+def grey_level_model(lm, length):
+    """
+       lm: is the initial guess
+       length: the search range of single points
+       index: The point
+       img: should be single channel grey level picture
+       return: The maximum value set along each normal
+       intensity[g01, g02, g03,...]
+                [g11, g12, g13,...]
+    """
+    normal = find_the_normal_to_lm(lm)
+    #gradient = np.zeros((2 * length - 1, 14))
+    grey_model_all_points = []
+    for i in range(len(lm)):
+        gradient_set = np.zeros((14, 2 * length + 1))
+        for img_nr in range(14-1):
+            img = cv2.imread('Data/Radiographs/%02d.tif' % (img_nr+2), 0)
+            for j in range(-length, length):  #
+                #if abs(int(lm[i,0]+ j )) >= 999 or abs(int(lm[i, 1] + normal[i] * j)) >= 999:
+                    # if j == length - 1:
+                    #     raise('Intensity on the last point alonfg this noraml is too large')
+                    #else:
+                    #gradient_set[img_nr,j] = gradient_set[img_nr,j]
+                #else:
+                gradient_set[img_nr, j] = img[int(lm[i, 0] + j + 1), int(lm[i, 1] + normal[i] * (j + 1))] - \
+                                              img[int(lm[i, 0] + j ), int(lm[i, 1] + normal[i] * j)]
+                #print (img[int(lm[i, 0] + j + 1), int(lm[i, 1] + normal[i] * (j + 1))])
+           # print(gradient_set[img_nr, :])
+            gradient_set[img_nr, :] = gradient_set[img_nr, :] / (sum(gradient_set[img_nr, :])+1) # plus 1 for avoid zero dviator
+    cov = np.cov(gradient_set, rowvar=0) # this may have axis choosing issues.
+    mean = np.mean(gradient_set, axis = 0)
+   # print(mean)
+  #  print(np.shape(mean))
+   # print (np.shape(cov))# the should be an 2length+1 array
+    return cov, mean
+
+
+
+def find_the_best_score(lm, testimg, search_length, glm_range, cov, mean):
+
+    normal = find_the_normal_to_lm(lm)
+    score = np.zeros(2*(search_length - glm_range))
+    max_score_point_index =np.zeros((len(lm), 2))
+    for i in range(len(lm)):
+        target = np.zeros(2 * glm_range + 1)
+        for k in range(2*(search_length - glm_range)):
+            for j in range(-search_length, -search_length+(2*glm_range+1)):
+                if abs(int(lm[i, 0] + j)) >= 999 or abs(int(lm[i, 1] + normal[i] * j)) >= 999:
+                    target[j + search_length] = target[j+search_length - 1]
+                else:
+                    target[j+search_length] = testimg[int(lm[i, 0] + j), int(lm[i, 1] + normal[i] * j)]
+           # print (target - mean, k)
+            score[k] = (target - mean).T.dot(cov).dot(target - mean)
+        index_max_point = np.argmax(score)
+        center_distance  = glm_range - (search_length - index_max_point)
+                #print ([int(lm[i, 0] + center_distance), int(lm[i, 1] + normal[i] * center_distance)])
+        max_score_point_index[i] = [int(lm[i, 0] + center_distance), int(lm[i, 1] + normal[i] * center_distance)]
+    return max_score_point_index
+
+
+
+
+
+
+from sklearn.metrics import mean_squared_error
+from Plotter import plot_PCA
+def f_score(test, Ground_truth):
+    """Computes the F-score of the fit.
+
+    F-score = 2*TP / (2*TP + FP + FN)
+
+    Args:
+        truth: The ground truth incisor segmentation image.
+        fit: The fitted segmentation image.
+
+    Returns:
+        The precision of the fit, compared to the ground truth.
+
+    """
+    # fit = plot_PCA(test, False)
+    (_, fit) = cv2.threshold(test, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    # truth = plot_PCA(Ground_truth, False)
+    (_, truth) = cv2.threshold(Ground_truth,128, 255,  cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    TP = fit & truth
+    FP = fit - truth
+    FN = truth - fit
+    # TN = 255 - (truth + fit)
+    F_score = float(2*(TP/255).sum()) / (2*(TP/255).sum() + (FP/255).sum() + (FN/255).sum())
+    return F_score
+
+
+
 def evaluation(X, Golden_lm):
+    """
+
+    :param X: The ASM model lm of the image
+    :param Golden_lm: The correct lm of image
+    :return: the square mean error
+    """
     error_single = 0
-    for i in range(np.shape(X)[0]):
-        error_single += (X[i, 0] - Golden_lm[i, 0]) + (X[i, 1] - Golden_lm[i, 1])**2
+    # for i in range(np.shape(X)[0]):
+        # error_single += (X[i, 0] - Golden_lm[i, 0]) + (X[i, 1] - Golden_lm[i, 1])**2
+    error_single = mean_squared_error(X, Golden_lm, multioutput='uniform_average')
     return error_single
 
 if __name__ == '__main__':
-    global Nr_incisor
+    #glm_range = 3
     max_iter = 10
+    search_length = 2
+    #source = 'Data\Landmarks\c_landmarks\landmarks1-%d.txt' % 1
+   # lm = Landmarks(source).show_points()
+   # cov, mean =  grey_level_model(lm, glm_range)
+    #img = cv2.imread('Data/Radiographs/01.tif', 0)
+    #best_match = find_the_best_score(lm, testimg = img, search_length = 5, glm_range = glm_range, cov = cov, mean = mean)
+    #print best_match
+
+
     for i in range(8):
-    # i = 7
         Nr_incisor = i + 1
         source = 'Data\Landmarks\c_landmarks\landmarks1-%d.txt' % Nr_incisor
-        print Nr_incisor
         lm = Landmarks(source).show_points()
        # print lm # you can print it to check differences.
 
         """Initial position guess"""
-        ini_pos = np.array([[570, 360, 390], [620, 470, 390], [640, 570, 370], [640, 670, 370], [640, 400, 670],
-                           [640, 490, 660], [620, 570, 670], [640, 650, 660]])
+        ini_pos = np.array([[570, 360, 390], [620, 470, 390], [640, 570, 370], [570, 670, 370], [640, 400, 670],
+                           [630, 480, 670], [620, 570, 630], [640, 650, 610]])
+
+        # ini_pos = np.array([[570, 360, 390], [570, 470, 390], [570, 570, 370], [570, 670, 370], [570, 400, 670],
+        #                    [470, 500, 680], [470, 590, 630], [470, 650, 610]])
         s = ini_pos[i, 0]
         t = [ini_pos[i, 1], ini_pos[i, 2]]
-        Golden_lm = load(Nr_incisor)
-        Golden_lm = rescale_withoutangle(gpa(Golden_lm,Nr_incisor)[2], t, s )# Y
+        Golden_lm = load_training_data(Nr_incisor)
+        Golden_lm = rescale_withoutangle(gpa(Golden_lm)[2], t, s )# Y
         img = cv2.imread('Data/Radiographs/01.tif', 0)
         init_guess_img = img.copy()
         crop_img_ori = crop(img, 1000, 500, 1000, 1000)
         crop_img_init_guess = crop(init_guess_img, 1000, 500, 1000, 1000)
         crop_correct_lm = crop(init_guess_img, 1000, 500, 1000, 1000)
+        #=======without crop
+        # crop_img_ori = img
+        # crop_img_init_guess = init_guess_img
+        # crop_correct_lm = init_guess_img
+
+
         """Drawing initial guess"""
         #cv2.imshow('first golden model', drawlines(crop_img_init_guess, Golden_lm))
         cv2.imwrite('Data\Configure\init_guess_incisor-%d.tif' % Nr_incisor, drawlines(crop_img_init_guess, Golden_lm))
         cv2.imwrite('Data\Configure\correct_lm_incisor-%d.tif' % Nr_incisor, drawlines(crop_correct_lm, lm))
+
         #cv2.waitKey(0)
 
 
-        X = active_shape_model(Golden_lm, crop_img_ori, max_iter = max_iter, Nr_incisor = Nr_incisor)
-        MSE = evaluation(X, lm)
-        print('The Distance SME of %d incisor is %3.4f' % (Nr_incisor, MSE))
+        X = active_shape_model(Golden_lm, crop_img_ori, max_iter = max_iter, Nr_incisor = Nr_incisor, search_length = search_length)
+        # MSE = evaluation(X, lm)
+
+        # plot_PCA(X)
+        # cv2.imshow(X)
+        # cv2.waitKey(0)
+        # cv2.imwrite('Data/finalresult/incisor-%d.tif' % (Nr_incisor),X)
+
+        lm = cv2.imread('Data/Segmentations/%02d-%d.png' % (0+1, Nr_incisor-1,), 0)
+        lm = crop(lm, 1000, 500, 1000, 1000)
+
+        X = cv2.imread('Data/finalresult/incisor-%d.tif' % (Nr_incisor,), 0)
+        test_img = X.copy()
+        height, width = X.shape
+        image2 = np.zeros((height, width), np.int8)
+        mask = np.array([X.shape], dtype=np.int32)
+        cv2.fillPoly(image2, [mask], 255)
+        maskimage2 = cv2.inRange(image2, 1, 255)
+        out = cv2.bitwise_and(test_img, test_img, mask=maskimage2)
+        cv2.imshow("fitting", out)
+        F_Score = f_score(X, lm)
+        # print('The Distance SME of %d incisor is %3.4f' % (Nr_incisor, MSE))
+        print('The F_score of %d incisor is %3.4f' % (Nr_incisor, F_Score))
+
+
+
+
+
+
+
+
